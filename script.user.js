@@ -71,6 +71,7 @@
         },
         locale: 'EN',
         has_warlog_2_table_script: false,
+        table_border: false,
         // too much, ignore these for now
         display: {
             player_results_only: true,
@@ -138,14 +139,7 @@
     }
 
     function checkWarlog2TableScript(config) {
-        var table_xpath = document.evaluate(
-            combats_xpath.warlog_2_table, xpath_context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        if (table_xpath.singleNodeValue === null) {
-            config.has_warlog_2_table_script = false;
-        } else {
-            config.has_warlog_2_table_script = true;
-            
-        }
+        config.has_warlog_2_table_script = hasElementInXPath(combats_xpath.warlog_2_table);
     }
 
 
@@ -230,7 +224,7 @@
 
 
     /*
-     * Formatting/HTML Functions
+     * Combat Result Functions
      */
     function prepareResults() {
         
@@ -271,6 +265,12 @@
     function getElementsByXPath(xpath) {
         return document.evaluate(
             xpath, xpath_context, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    }
+
+    function hasElementInXPath(xpath) {
+        var result = document.evaluate(
+            xpath, xpath_context, null, XPathResult.ANY_UNORDERED_NODE_TYPE, null);
+        return result.singleNodeValue !== null;
     }
 
     function stripHTMLTags(html_string) {
