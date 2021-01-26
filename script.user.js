@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name            LWM Combat Results
-// @name:ru         Lorem ipsum
+// @name:ru         HWM Combat Results
 // @namespace       https://greasyfork.org/en/users/731199-thirdwater
 // @description     Displays the result of the combats in the log page.
-// @description:ru  Lorem ipsum
+// @description:ru  Displays the result of the combats in the log page.
 // @match           *://www.lordswm.com/pl_warlog.php?*
 // @match           *://www.heroeswm.ru/pl_warlog.php?*
 // @version         0.1
@@ -16,8 +16,22 @@
  * For pull requests, bug fixes, etc. visit:
  * https://github.com/Thirdwater/lwm-combat-results
  *
- * For lwm contact, mail to:
+ * For lwm contact, visit:
  * https://www.lordswm.com/pl_info.php?id=4874384
+ */
+ 
+/*
+ * I am open to all Russian messages, but please be aware that
+ * I will be primarily using translation tools to communicate.
+ *
+ * For comments, feedbacks, suggestions, etc. visit:
+ * [greasyfork link]
+ *
+ * For translations, pull requests, bug fixes, etc. visit:
+ * https://github.com/Thirdwater/lwm-combat-results
+ *
+ * For hwm contact, visit:
+ * https://www.heroeswm.ru/pl_info.php?id=4874384
  */
 
 (function() {
@@ -25,6 +39,9 @@
     'use strict';
 
 
+    /*
+     * Configurations
+     */
     var profile_id_group = /pl_info\.php\?id\=(\d+)/;
     var ru_url_regex = /heroeswm\.ru/;
     var combat_link_regex = /warlog\.php\?warid\=\d+/;
@@ -38,7 +55,10 @@
 
     var xpath_context = "/html/body/center/table[last()]/tbody/tr/td";
     var log_owner_xpath = "./center[1]/a";
-    var combats_xpath = "./table/tbody/tr/td[1]/a";
+    var combats_xpath = {
+        vanilla: "./a",
+        warlog_2_table: "./table/tbody/tr/td[1]/a"
+    };
     xpath_context = document.evaluate(
         xpath_context, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
 
@@ -50,6 +70,7 @@
             id: 0
         },
         locale: 'EN',
+        has_warlog_2_table_script: false,
         // too much, ignore these for now
         display: {
             player_results_only: true,
@@ -75,22 +96,27 @@
     };
 
 
+    /*
+     * Main Logic
+     */
     var config = loadConfig();
     var combats = getCombats();
-    prepareTable();
+    prepareResults();
     combats.forEach(async function(combat) {
         var encoding = await fetchCombatEncoding(combat);
         var combat_result = getCombatResults(encoding);
-        addResultNode(combat, combat_result);
+        //addResultNode(combat, combat_result);
     });
-    console.log(config.player);
 
 
+    /*
+     * Configuration Functions
+     */
     function loadConfig() {
         var config = default_config;
         loadLocale(config);
         loadPlayer(config);
-        // look for warlog2table existence
+        checkWarlog2TableScript(config);
         // look into cookies and stuff
         return config;
     }
@@ -111,8 +137,27 @@
         config.player.id = log_owner_link.href.match(profile_id_group)[1];
     }
 
+    function checkWarlog2TableScript(config) {
+        var table_xpath = document.evaluate(
+            combats_xpath.warlog_2_table, xpath_context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        if (table_xpath.singleNodeValue === null) {
+            config.has_warlog_2_table_script = false;
+        } else {
+            config.has_warlog_2_table_script = true;
+            
+        }
+    }
+
+
+    /*
+     * Combat Functions
+     */
     function getCombats() {
-        var links = getElementsByXPath(combats_xpath);
+        var xpath = combats_xpath.vanilla;
+        if (config.has_warlog_2_table_script) {
+            xpath = combats_xpath.warlog_2_table;
+        }
+        var links = getElementsByXPath(xpath);
         var num_links = links.snapshotLength;
 
         var combats = [];
@@ -124,17 +169,6 @@
             }
         }
         return combats;
-    }
-
-    function getElementByXPath(xpath) {
-        var result = document.evaluate(
-            xpath, xpath_context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        return result.singleNodeValue;
-    }
-
-    function getElementsByXPath(xpath) {
-        return document.evaluate(
-            xpath, xpath_context, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
     }
 
     function isCombatLink(link_element) {
@@ -194,20 +228,25 @@
         return results;
     }
 
-    function prepareTable() {
+
+    /*
+     * Formatting/HTML Functions
+     */
+    function prepareResults() {
         
     }
-
+    
     function addResultNode(combat, result) {
+        var result_node = document.createElement('div');
+        result_node.style.cssText = "overflow: hidden; text-overflow: ellipsis;";
+        
         // with warlog2table script:
         var row_element = combat.link_node.parentNode.parentNode;
         var table_element = row_element.parentNode.parentNode;
         var result_container = document.createElement('td');
-        var result_node = document.createElement('div');
 
         // move these to a different place
         table_element.style.cssText += "white-space: nowrap; table-layout:fixed; width: 100%";
-        result_node.style.cssText = "overflow: hidden; text-overflow: ellipsis;";
 
         result_node.textContent = formatResult(result);
         result_container.appendChild(result_node);
@@ -215,8 +254,23 @@
     }
 
     function formatResult(result) {
-
+        // TODO: extract and format
         return result.user[config.locale];
+    }
+
+
+    /*
+     * Utility Functions
+     */
+    function getElementByXPath(xpath) {
+        var result = document.evaluate(
+            xpath, xpath_context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        return result.singleNodeValue;
+    }
+
+    function getElementsByXPath(xpath) {
+        return document.evaluate(
+            xpath, xpath_context, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
     }
 
     function stripHTMLTags(html_string) {
@@ -226,5 +280,3 @@
     }
 
 })();
-
-
