@@ -100,11 +100,12 @@
      */
     var config = loadConfig();
     var combats = getCombats();
+    var result_nodes = [];
     prepareResults(combats);
     combats.forEach(async function(combat) {
         var encoding = await fetchCombatEncoding(combat);
         var combat_result = getCombatResults(encoding);
-        addResultNode(combat, combat_result);
+        var result_node = addResultNode(combat, combat_result);
     });
 
 
@@ -243,13 +244,33 @@
         var current_node = reference_node;
         var new_row = true;
         var container = null;
-        while ((current_node = current_node.nextSibling) !== null) {
+        while (current_node.nextSibling !== null) {
+            current_node = current_node.nextSibling;
             if (new_row) {
                 container = document.createElement('div');
-                container.style.cssText = "display: flex;";
+                container.style.cssText = "display: flex; white-space: pre";
                 parent_node.insertBefore(container, current_node);
                 new_row = false;
             }
+            if (current_node.nodeName.toLowerCase() !== 'br') {
+                if (current_node.nodeType === Node.TEXT_NODE) {
+                    var stripped_text = current_node.wholeText.replace(/\n/gm, "");
+                    if (stripped_text === " ") {
+                        // Weird behavior when appending whitespace-only text nodes the normal way.
+                        current_node.previousSibling.insertAdjacentHTML('afterend', "&nbsp;");
+                    } else {
+                        container.appendChild(document.createTextNode(stripped_text));
+                    }
+                    parent_node.removeChild(current_node);
+                } else {
+                    container.appendChild(current_node);
+                }
+            } else {
+                parent_node.removeChild(current_node);
+                new_row = true;
+            }
+            // Get back out of the container and continue.
+            current_node = container;
         }
     }
     
@@ -278,6 +299,8 @@
             table_node.appendChild(table_row_node);
             column_node.appendChild(table_node);
             row_node.appendChild(column_node);
+            
+            return result_node;
         } else {
             /*
             var container = document.createElement('div');
