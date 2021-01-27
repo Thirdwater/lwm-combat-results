@@ -59,8 +59,7 @@
         vanilla: "./a",
         warlog_2_table: "./table/tbody/tr/td[1]/a"
     };
-    xpath_context = document.evaluate(
-        xpath_context, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+    xpath_context = getElementByXPath(xpath_context, document);
 
     // Put these after the "Combat log of [name]"
     // E.g. "Combat log of [name] | Options"
@@ -71,7 +70,6 @@
         },
         locale: 'EN',
         has_warlog_2_table_script: false,
-        table_border: false,
         // too much, ignore these for now
         display: {
             player_results_only: true,
@@ -102,11 +100,11 @@
      */
     var config = loadConfig();
     var combats = getCombats();
-    prepareResults();
+    prepareResults(combats);
     combats.forEach(async function(combat) {
         var encoding = await fetchCombatEncoding(combat);
         var combat_result = getCombatResults(encoding);
-        //addResultNode(combat, combat_result);
+        addResultNode(combat, combat_result);
     });
 
 
@@ -133,13 +131,14 @@
     }
 
     function loadPlayer(config) {
-        var log_owner_link = getElementByXPath(log_owner_xpath);
+        var log_owner_link = getElementByXPath(log_owner_xpath, xpath_context);
         config.player.name = log_owner_link.getElementsByTagName('b')[0].innerHTML;
         config.player.id = log_owner_link.href.match(profile_id_group)[1];
     }
 
     function checkWarlog2TableScript(config) {
-        config.has_warlog_2_table_script = hasElementInXPath(combats_xpath.warlog_2_table);
+        config.has_warlog_2_table_script = hasElementInXPath(
+            combats_xpath.warlog_2_table, xpath_context);
     }
 
 
@@ -151,7 +150,7 @@
         if (config.has_warlog_2_table_script) {
             xpath = combats_xpath.warlog_2_table;
         }
-        var links = getElementsByXPath(xpath);
+        var links = getElementsByXPath(xpath, xpath_context);
         var num_links = links.snapshotLength;
 
         var combats = [];
@@ -200,6 +199,7 @@
     }
 
     function getCombatResults(encoding) {
+        // TODO: handle draws and restricted combats
         var en_results = encoding.match(encoding_result_group.EN);
         var ru_results = encoding.match(encoding_result_group.RU);
         var winner_result = {
@@ -226,29 +226,79 @@
     /*
      * Combat Result Functions
      */
-    function prepareResults() {
-        
+    function prepareResults(combats) {
+        var first_combat_node = combats[0].link_node;
+        var table_node = first_combat_node.parentNode.parentNode.parentNode.parentNode;
+        table_node.style.cssText += "white-space: nowrap;";
+        if (!config.has_warlog_2_table_script) {
+            var td_node = first_combat_node.parentNode;
+            td_node.style.cssText += "max-width: 1000px";
+            var reference_node = td_node.childNodes[2];
+            formatVanillaLog(reference_node);
+        }
+    }
+    
+    function formatVanillaLog(reference_node) {
+        var parent_node = reference_node.parentNode;
+        var current_node = reference_node;
+        var new_row = true;
+        var container = null;
+        while ((current_node = current_node.nextSibling) !== null) {
+            if (new_row) {
+                container = document.createElement('div');
+                container.style.cssText = "display: flex;";
+                parent_node.insertBefore(container, current_node);
+                new_row = false;
+            }
+        }
     }
     
     function addResultNode(combat, result) {
-        var result_node = document.createElement('div');
-        result_node.style.cssText = "overflow: hidden; text-overflow: ellipsis;";
+        var full_result = formatResult(result);
+        var filtered_result = filterResult(result);
         
-        // with warlog2table script:
-        var row_element = combat.link_node.parentNode.parentNode;
-        var table_element = row_element.parentNode.parentNode;
-        var result_container = document.createElement('td');
-
-        // move these to a different place
-        table_element.style.cssText += "white-space: nowrap; table-layout:fixed; width: 100%";
-
-        result_node.textContent = formatResult(result);
-        result_container.appendChild(result_node);
-        row_element.appendChild(result_container);
+        if (config.has_warlog_2_table_script) {
+            // See https://stackoverflow.com/a/5650542
+            // This is why we shouldn't be using tables for layout...
+            var row_node = combat.link_node.parentNode.parentNode;
+            var column_node = document.createElement('td');
+            var table_node = document.createElement('table');
+            var table_row_node = document.createElement('tr');
+            var result_node = document.createElement('td');
+            
+            table_node.setAttribute('width', "100%");
+            table_node.setAttribute('cellpadding', "0");
+            table_node.setAttribute('cellspacing', "0");
+            table_node.style.cssText = "table-layout: fixed; white-space: nowrap";
+            result_node.style.cssText = "overflow: hidden; text-overflow: ellipsis;";
+            result_node.textContent = filtered_result;
+            result_node.setAttribute('title', full_result);
+            
+            table_row_node.appendChild(result_node);
+            table_node.appendChild(table_row_node);
+            column_node.appendChild(table_node);
+            row_node.appendChild(column_node);
+        } else {
+            /*
+            var container = document.createElement('div');
+            var result_node = document.createElement('span');
+            var linebreak_node = combat.link_node.nextSibling;
+            while (linebreak_node.nodeName.toLowerCase() !== 'br') {
+                linebreak_node = linebreak_node.nextSibling;
+            }
+            var container = combat.link_node.parentNode;
+            container.insertBefore(result_node, linebreak_node);*/
+        }
     }
 
     function formatResult(result) {
         // TODO: extract and format
+        var formatted_result = stripHTMLTags(result.user[config.locale]);
+        return formatted_result;
+    }
+    
+    function filterResult(result) {
+        // TODO: filter based on config
         return result.user[config.locale];
     }
 
@@ -256,20 +306,20 @@
     /*
      * Utility Functions
      */
-    function getElementByXPath(xpath) {
+    function getElementByXPath(xpath, context) {
         var result = document.evaluate(
-            xpath, xpath_context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            xpath, context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
         return result.singleNodeValue;
     }
 
-    function getElementsByXPath(xpath) {
+    function getElementsByXPath(xpath, context) {
         return document.evaluate(
-            xpath, xpath_context, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+            xpath, context, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
     }
 
-    function hasElementInXPath(xpath) {
+    function hasElementInXPath(xpath, context) {
         var result = document.evaluate(
-            xpath, xpath_context, null, XPathResult.ANY_UNORDERED_NODE_TYPE, null);
+            xpath, context, null, XPathResult.ANY_UNORDERED_NODE_TYPE, null);
         return result.singleNodeValue !== null;
     }
 
