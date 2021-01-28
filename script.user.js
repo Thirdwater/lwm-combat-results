@@ -52,6 +52,27 @@
         EN: /n(<f.*V.*)<br \/>(<f.*D.*)<br \/>\|#/,
         RU: /f(<f.*П.*)<br \/>(<f.*П.*)<br \/>\|#f/
     };
+    var encoding_draw_group = {
+        EN: /n(<f.*D.*)<br \/>\|#/,
+        RU: /f(<f.*Н.*)<br \/>\|#f/
+    };
+    var encoding_restricted_regex = /restricted/;
+    var encoding_player_group = /(.*) (?:gains|gets)/;
+    var result_group = {
+        exp: /(\d+) exp/,
+        fsp: /(\d*\.?\d+) skill point/,
+        gold: /(\d+) gold/,
+        HG: /a/,
+        TG: /\+(\d*\.?\d+) TG point/,
+        RG: /a/,
+        MG: /a/,
+        CG: /a/,
+        WG: /\+(\d*\.?\d+) WG point/,
+        WG_star: /a/,
+        LeG: /\+(\d*\.?\d+) LG point/,
+        LeG_unit: /a/,
+        armament: /a/,
+    };
 
     var xpath_context = "/html/body/center/table[last()]/tbody/tr/td";
     var log_owner_xpath = "./center[1]/a";
@@ -101,11 +122,12 @@
     var config = loadConfig();
     var combats = getCombats();
     var result_nodes = [];
-    prepareResults(combats);
+    formatLog(combats);
     combats.forEach(async function(combat) {
         var encoding = await fetchCombatEncoding(combat);
-        var combat_result = getCombatResults(encoding);
+        var combat_result = parseEncoding(encoding);
         var result_node = addResultNode(combat, combat_result);
+        result_nodes.push(result_node);
     });
 
 
@@ -199,35 +221,101 @@
         return encoding;
     }
 
-    function getCombatResults(encoding) {
-        // TODO: handle draws and restricted combats
-        var en_results = encoding.match(encoding_result_group.EN);
-        var ru_results = encoding.match(encoding_result_group.RU);
-        var winner_result = {
-            EN: en_results[1],
-            RU: ru_results[1]
-        };
-        var loser_result = {
-            EN: en_results[2],
-            RU: ru_results[2]
-        };
-        var user_result = winner_result;
-        if (loser_result.EN.includes(config.player.name)) {
-            user_result = loser_result;
-        }
-        var results = {
-            winner: winner_result,
-            loser: loser_result,
-            user: user_result
-        };
-        return results;
-    }
-
 
     /*
      * Combat Result Functions
      */
-    function prepareResults(combats) {
+    function parseEncoding(encoding) {
+        var result = {restricted: false};
+        if (encoding_restricted_regex.test(encoding.substring(0, 20))) {
+            result.restricted = true;
+            return result;
+        }
+        
+        var win_en = [];
+        var win_ru = [];
+        var lose_en = [];
+        var lose_ru = [];
+        var draw_en = [];
+        var draw_ru = [];
+        var player = {};
+        
+        var en_results = encoding.match(encoding_result_group.EN);
+        var ru_results = encoding.match(encoding_result_group.RU);
+        if (en_results === null) {
+            en_results = encoding.match(encoding_draw_group.EN);
+            ru_results = encoding.match(encoding_draw_group.RU);
+            draw_en = encodingToArray(en_results[1]);
+            draw_ru = encodingToArray(ru_results[1]);
+            
+            player.full_text = {
+                EN: getPlayerResult(draw_en),
+                RU: getPlayerResult(draw_ru)
+            };
+        } else {
+            win_en = encodingToArray(en_results[1]);
+            win_ru = encodingToArray(ru_results[1]);
+            lose_en = encodingToArray(en_results[2]);
+            lose_ru = encodingToArray(ru_results[2]);
+            
+            var player_win = getPlayerResult(win_en);
+            if (player_win === null) {
+                player.full_text = {
+                    EN: getPlayerResult(lose_en),
+                    RU: getPlayerResult(lose_ru)
+                };
+            } else {
+                player.full_text = {
+                    EN: player_win,
+                    RU: getPlayerResult(win_ru)
+                };
+            }
+        }
+        
+        parsePlayerResult(player);
+        result.player = player;
+        var full_text_en = [].concat(win_en, lose_en, draw_en);
+        var full_text_ru = [].concat(win_ru, lose_ru, draw_ru);
+        result.full_text = {
+            EN: full_text_en.join("\n"),
+            RU: full_text_ru.join("\n")
+        };
+        return result;
+    }
+    
+    function parsePlayerResult(player) {
+        var full_text = player.full_text;
+        // TODO: ru 
+        var short_text_en = full_text.EN.replace(encoding_player_group, "");
+        if (short_text_en[short_text_en.length - 1] === ".") {
+            short_text_en = short_text_en.slice(0, -1);
+        }
+        player.short_text = {
+            EN: short_text_en
+        };
+        // TODO: classify each components for filtering purposes
+    }
+    
+    function encodingToArray(encoding) {
+        var lines = encoding.split(/<br *\/?>/i);
+        for (var i = 0; i < lines.length; i++) {
+            lines[i] = stripHTMLTags(lines[i]);
+        }
+        return lines;
+    }
+
+    function getPlayerResult(result_lines) {
+        for (var i = 0; i < result_lines.length; i++) {
+            var result_line = result_lines[i];
+            var player_line = result_line.match(encoding_player_group);
+            if ((player_line !== null) && (player_line[1] === config.player.name)) {
+                return result_line;
+            }
+        }
+        return null;
+    }
+
+    function formatLog(combats) {
         var first_combat_node = combats[0].link_node;
         var table_node = first_combat_node.parentNode.parentNode.parentNode.parentNode;
         table_node.style.cssText += "white-space: nowrap;";
@@ -255,18 +343,19 @@
             if (current_node.nodeName.toLowerCase() !== 'br') {
                 if (current_node.nodeType === Node.TEXT_NODE) {
                     var stripped_text = current_node.wholeText.replace(/\n/gm, "");
+                    parent_node.removeChild(current_node);
                     if (stripped_text === " ") {
                         // Weird behavior when appending whitespace-only text nodes the normal way.
-                        current_node.previousSibling.insertAdjacentHTML('afterend', "&nbsp;");
+                        container.insertAdjacentHTML('beforeend', "&nbsp;");
                     } else {
                         container.appendChild(document.createTextNode(stripped_text));
                     }
-                    parent_node.removeChild(current_node);
                 } else {
                     container.appendChild(current_node);
                 }
             } else {
                 parent_node.removeChild(current_node);
+                container.insertAdjacentHTML('beforeend', "&nbsp;&nbsp;");
                 new_row = true;
             }
             // Get back out of the container and continue.
@@ -275,17 +364,19 @@
     }
     
     function addResultNode(combat, result) {
-        var full_result = formatResult(result);
+        var full_result = result.full_text[config.locale];
         var filtered_result = filterResult(result);
+        console.log(filtered_result);
         
+        var result_node = null;
         if (config.has_warlog_2_table_script) {
             // See https://stackoverflow.com/a/5650542
-            // This is why we shouldn't be using tables for layout...
+            // This is why we shouldn't be using tables for layout.
             var row_node = combat.link_node.parentNode.parentNode;
             var column_node = document.createElement('td');
             var table_node = document.createElement('table');
             var table_row_node = document.createElement('tr');
-            var result_node = document.createElement('td');
+            result_node = document.createElement('td');
             
             table_node.setAttribute('width', "100%");
             table_node.setAttribute('cellpadding', "0");
@@ -299,30 +390,21 @@
             table_node.appendChild(table_row_node);
             column_node.appendChild(table_node);
             row_node.appendChild(column_node);
-            
-            return result_node;
         } else {
-            /*
-            var container = document.createElement('div');
-            var result_node = document.createElement('span');
-            var linebreak_node = combat.link_node.nextSibling;
-            while (linebreak_node.nodeName.toLowerCase() !== 'br') {
-                linebreak_node = linebreak_node.nextSibling;
-            }
-            var container = combat.link_node.parentNode;
-            container.insertBefore(result_node, linebreak_node);*/
+            var container_node = combat.link_node.parentNode;
+            result_node = document.createElement('span');
+            result_node.style.cssText = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis";
+            result_node.textContent = filtered_result;
+            result_node.setAttribute('title', full_result);
+            
+            container_node.appendChild(result_node);
         }
-    }
-
-    function formatResult(result) {
-        // TODO: extract and format
-        var formatted_result = stripHTMLTags(result.user[config.locale]);
-        return formatted_result;
+        return result_node;
     }
     
     function filterResult(result) {
         // TODO: filter based on config
-        return result.user[config.locale];
+        return result.player.short_text[config.locale];
     }
 
 
