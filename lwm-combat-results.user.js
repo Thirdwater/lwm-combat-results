@@ -21,16 +21,16 @@
  */
  
 /*
- * I am open to all Russian messages, but please be aware that
- * I will be primarily using translation tools to communicate.
+ * Я открыт для всех сообщений на русском языке, но имейте в виду,
+ * что я буду в основном использовать средства перевода для общения.
  *
- * For comments, feedbacks, suggestions, etc. visit:
+ * Для комментариев, отзывов, предложений и т. Д. Посетите: 
  * [greasyfork link]
  *
- * For translations, pull requests, bug fixes, etc. visit:
+ * Для переводов, запросов на вытягивание, исправлений ошибок и т. Д. Посетите:
  * https://github.com/Thirdwater/lwm-combat-results
  *
- * For hwm contact, visit:
+ * Для связи в hwm посетите:
  * https://www.heroeswm.ru/pl_info.php?id=4874384
  */
 
@@ -58,21 +58,6 @@
     };
     var encoding_restricted_regex = /restricted/;
     var encoding_player_group = /(.*) (?:gains|gets)/;
-    var result_group = {
-        exp: /(\d+) exp/,
-        fsp: /(\d*\.?\d+) skill point/,
-        gold: /(\d+) gold/,
-        HG: /a/,
-        TG: /\+(\d*\.?\d+) TG point/,
-        RG: /a/,
-        MG: /a/,
-        CG: /a/,
-        WG: /\+(\d*\.?\d+) WG point/,
-        WG_star: /a/,
-        LeG: /\+(\d*\.?\d+) LG point/,
-        LeG_unit: /a/,
-        armament: /a/,
-    };
 
     var xpath_context = "/html/body/center/table[last()]/tbody/tr/td";
     var log_owner_xpath = "./center[1]/a";
@@ -90,29 +75,7 @@
             id: 0
         },
         locale: 'EN',
-        has_warlog_2_table_script: false,
-        // too much, ignore these for now
-        display: {
-            player_results_only: true,
-            EXP: true,
-            FSP: true,
-            gold: true,
-            AP: true,
-            armaments: true,
-            guilds: {
-                HG: true,
-                TG: true,
-                RG: true,
-                MG: true,
-                CG: true,
-                WG: true,
-                WG_stars: true,
-                LeG_units: true,
-                LeG_costs: true
-            },
-            // Everything else such as event points, trinkets, etc.
-            others: true
-        }
+        has_warlog_2_table_script: false
     };
 
 
@@ -293,7 +256,6 @@
         player.short_text = {
             EN: short_text_en
         };
-        // TODO: classify each components for filtering purposes
     }
     
     function encodingToArray(encoding) {
@@ -365,8 +327,7 @@
     
     function addResultNode(combat, result) {
         var full_result = result.full_text[config.locale];
-        var filtered_result = filterResult(result);
-        console.log(filtered_result);
+        var short_result = result.player.short_text[config.locale];
         
         var result_node = null;
         if (config.has_warlog_2_table_script) {
@@ -383,7 +344,7 @@
             table_node.setAttribute('cellspacing', "0");
             table_node.style.cssText = "table-layout: fixed; white-space: nowrap";
             result_node.style.cssText = "overflow: hidden; text-overflow: ellipsis;";
-            result_node.textContent = filtered_result;
+            result_node.textContent = short_result;
             result_node.setAttribute('title', full_result);
             
             table_row_node.appendChild(result_node);
@@ -394,19 +355,13 @@
             var container_node = combat.link_node.parentNode;
             result_node = document.createElement('span');
             result_node.style.cssText = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis";
-            result_node.textContent = filtered_result;
+            result_node.textContent = short_result;
             result_node.setAttribute('title', full_result);
             
             container_node.appendChild(result_node);
         }
         return result_node;
     }
-    
-    function filterResult(result) {
-        // TODO: filter based on config
-        return result.player.short_text[config.locale];
-    }
-
 
     /*
      * Utility Functions
