@@ -326,8 +326,12 @@
     }
     
     function addResultNode(combat, result) {
-        var full_result = result.full_text[config.locale];
-        var short_result = result.player.short_text[config.locale];
+        var full_result = "";
+        var short_result = "";
+        if (!result.restricted) {
+            full_result = result.full_text[config.locale];
+            short_result = result.player.short_text[config.locale];
+        }
         
         var result_node = null;
         if (config.has_warlog_2_table_script) {
